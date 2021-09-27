@@ -9,25 +9,32 @@
 #include "resource.h"
 #include "editbox.h"
 
+static double const MAX_RANGE = 2.0 * 1852.0;
+
 struct Ctx {
     HINSTANCE instance;
     HWND display;
     RECT client;
-    HBRUSH displayBrush, wndBrush;
-    HPEN borderPen;
+    HBRUSH displayBrush, wndBrush, beamBrush;
+    HPEN borderPen, beamPen;
     double bearing;
     double elevation;
+    double mastHeight;
 
-    Ctx (HINSTANCE _instance): instance (_instance), bearing (0.0), elevation (100) {
+    Ctx (HINSTANCE _instance, double _mastHeight, double _bearing, double _elevation): instance (_instance), bearing (_bearing), elevation (_elevation), mastHeight (_mastHeight) {
         borderPen = CreatePen (PS_SOLID, 3, 0);
         displayBrush = CreateSolidBrush (RGB (100, 100, 100));
         wndBrush = CreateSolidBrush (RGB (200, 200, 200));
+        beamPen = CreatePen (PS_SOLID, 1, RGB (255, 200, 0));
+        beamBrush = CreateSolidBrush (RGB (255, 200, 0));
     }
 
     virtual ~Ctx () {
         DeleteObject (borderPen);
         DeleteObject (wndBrush);
         DeleteObject (displayBrush);
+        DeleteObject (beamBrush);
+        DeleteObject (beamPen);
     }
 };
 
@@ -40,6 +47,10 @@ char const *DISPLAY_CLS_NAME = "lampSimDispWin";
 
 inline double toDeg (double val) { return val * TO_DEG; }
 inline double toRad (double val) { return val * TO_RAD; }
+
+double elevation2range (Ctx *ctx) {
+    return ctx->mastHeight / tan (ctx->elevation * TO_RAD);
+}
 
 bool queryExit (HWND wnd) {
     return MessageBox (wnd, "Do you want to quit the application?", "Confirmation", MB_YESNO | MB_ICONQUESTION) == IDYES;
@@ -99,6 +110,7 @@ void paintDisplay (HWND wnd) {
     auto height = client.bottom + 1;
     auto centerX = client.right >> 1;
     auto centerY = client.bottom >> 1;
+    auto zone = (centerX - 30) / 4;
     auto project = [centerX, centerY] (double angle, double radius, long& x, long &y) {
         double angleRad = toRad (angle);
         if (angleRad < 0.0) angleRad += TWO_PI;
@@ -115,6 +127,7 @@ void paintDisplay (HWND wnd) {
         tick [3].y = tick [0].y;
         Polygon (paintCtx, tick, 4);
     };
+
     FillRect (paintCtx, & client, ctx->wndBrush);
     SelectObject (paintCtx, ctx->displayBrush);
     SelectObject (paintCtx, ctx->borderPen);
@@ -126,6 +139,26 @@ void paintDisplay (HWND wnd) {
     }
     //Ellipse (paintCtx, centerX - 10, centerY - 10, centerX + 10, centerY + 10);
 
+    SelectObject (paintCtx, ctx->displayBrush);
+    for (auto i = 4; i >= 1; -- i) {
+        auto radius = zone * i;
+        Ellipse (paintCtx, centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+    }
+
+    SelectObject (paintCtx, ctx->beamBrush);
+    SelectObject (paintCtx, ctx->beamPen);
+    POINT beamVertices [4];
+    auto range = elevation2range (ctx);
+    auto radius = range / MAX_RANGE * zone * 4.0;
+    project (ctx->bearing - 5, radius, beamVertices [0].x, beamVertices [0].y);
+    project (ctx->bearing + 5, radius, beamVertices [1].x, beamVertices [1].y);
+    beamVertices [2].x = centerX;
+    beamVertices [2].y = centerY;
+    beamVertices [3].x = beamVertices [0].x;
+    beamVertices [3].y = beamVertices [0].y;
+    Polygon (paintCtx, beamVertices, 4);
+    auto spotRadius = (beamVertices [1].x - beamVertices [0].x) >> 1;
+    Ellipse (paintCtx, beamVertices [0].x, beamVertices [0].y - spotRadius, beamVertices [1].x, beamVertices [1].y + spotRadius);
 
     EndPaint (wnd, & data);
 }
@@ -216,7 +249,7 @@ void initCommonControls () {
 }
 
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
-    Ctx ctx (instance);
+    Ctx ctx (instance, 10.0, 0.0, 0.25);
 
     CoInitialize (0);
     initCommonControls ();
