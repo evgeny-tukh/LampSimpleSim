@@ -27,6 +27,7 @@ struct Ctx {
     double requestedBrg;
     double requestedElev;
     double mastHeight;
+    clock_t lastCorrection;
 
     Ctx (
         HINSTANCE _instance,
@@ -35,7 +36,7 @@ struct Ctx {
         double _actualElev,
         double _requestedBrg,
         double _requestedElev
-    ): instance (_instance), actualBrg (_actualBrg), actualElev (_actualElev), requestedBrg (_requestedBrg), requestedElev (_requestedElev), mastHeight (_mastHeight) {
+    ): instance (_instance), actualBrg (_actualBrg), actualElev (_actualElev), requestedBrg (_requestedBrg), requestedElev (_requestedElev), mastHeight (_mastHeight), lastCorrection (0) {
         borderPen = CreatePen (PS_SOLID, 3, 0);
         displayBrush = CreateSolidBrush (RGB (100, 100, 100));
         wndBrush = CreateSolidBrush (RGB (200, 200, 200));
@@ -103,6 +104,8 @@ void initWindow (HWND wnd, void *data) {
 
     auto minSize = (client.right > client.bottom ? client.bottom : client.right) - 20;
     ctx->display = CreateWindow (DISPLAY_CLS_NAME, "", WS_CHILD | WS_VISIBLE, 10, 10, minSize, minSize, wnd, 0, ctx->instance, ctx);
+
+    SetTimer (wnd, 100, 250, 0);
 }
 
 void doCommand (HWND wnd, uint16_t command) {
@@ -191,10 +194,73 @@ void onSize (HWND wnd, int width, int height) {
     MoveWindow (ctx->display, 10, 10, minSize, minSize, true);
 }
 
+void updateWatchdog (HWND wnd) {
+    Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
+    clock_t now = clock ();
+    bool changed = false;
+
+    if ((now - ctx->lastCorrection) > (CLOCKS_PER_SEC / 4)) {
+        if (ctx->requestedBrg != ctx->actualBrg) {
+            changed = true;
+            auto delta1 = ctx->requestedBrg - ctx->actualBrg;
+
+            if (delta1 < 0.0) delta1 += 360.0;
+
+            auto delta2 = 360.0 - delta1;
+
+            double delta, sign;
+            
+            if (delta1 > delta2) {
+                delta = delta2;
+                sign = -1.0;
+            } else {
+                delta = delta1;
+                sign = 1.0;
+            }
+
+            if (delta > 50.0) {
+                delta = 10.0;
+            } else if (delta > 25.0) {
+                delta = 5.0;
+            } else if (delta > 5.0) {
+                delta = 1.0;
+            }
+
+            ctx->actualBrg += delta * sign;
+        }
+        if (ctx->requestedElev != ctx->actualElev) {
+            changed = true;
+            double requestedRng = elevation2range (ctx->mastHeight, ctx->requestedElev);
+            double actualRng = elevation2range (ctx->mastHeight, ctx->actualElev);
+            auto delta = requestedRng - actualRng;
+            auto absDelta = fabs (delta);
+            auto sign = delta >= 0 ? 1.0 : -1.0;
+
+            if (absDelta > 500.0) {
+                absDelta = 100.0;
+            } else if (absDelta > 100.0) {
+                absDelta = 10.0;
+            } else if (absDelta > 20.0) {
+                absDelta = 2.0;
+            }
+
+            actualRng += absDelta * sign;
+            ctx->actualElev = range2elevation (ctx->mastHeight, actualRng);
+        }
+    }
+
+    if (changed) {
+        ctx->lastCorrection = now;
+        InvalidateRect (wnd, 0, 1);
+    }
+}
+
 LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
     LRESULT result = 0;
 
     switch (msg) {
+        case WM_TIMER:
+            updateWatchdog (wnd); break;
         case WM_COMMAND:
             doCommand (wnd, LOWORD (param1)); break;
         case WM_SIZE:
