@@ -15,26 +15,38 @@ struct Ctx {
     HINSTANCE instance;
     HWND display;
     RECT client;
-    HBRUSH displayBrush, wndBrush, beamBrush;
-    HPEN borderPen, beamPen;
-    double bearing;
-    double elevation;
+    union {
+        HGDIOBJ objects [7];
+        struct {
+            HBRUSH displayBrush, wndBrush, beamBrush, beamBrush2;
+            HPEN borderPen, beamPen, beamPen2;
+        };
+    };
+    double actualBrg;
+    double actualElev;
+    double requestedBrg;
+    double requestedElev;
     double mastHeight;
 
-    Ctx (HINSTANCE _instance, double _mastHeight, double _bearing, double _elevation): instance (_instance), bearing (_bearing), elevation (_elevation), mastHeight (_mastHeight) {
+    Ctx (
+        HINSTANCE _instance,
+        double _mastHeight,
+        double _actualBrg,
+        double _actualElev,
+        double _requestedBrg,
+        double _requestedElev
+    ): instance (_instance), actualBrg (_actualBrg), actualElev (_actualElev), requestedBrg (_requestedBrg), requestedElev (_requestedElev), mastHeight (_mastHeight) {
         borderPen = CreatePen (PS_SOLID, 3, 0);
         displayBrush = CreateSolidBrush (RGB (100, 100, 100));
         wndBrush = CreateSolidBrush (RGB (200, 200, 200));
         beamPen = CreatePen (PS_SOLID, 1, RGB (255, 200, 0));
+        beamPen2 = CreatePen (PS_SOLID, 1, RGB (200, 150, 0));
         beamBrush = CreateSolidBrush (RGB (255, 200, 0));
+        beamBrush2 = CreateSolidBrush (RGB (200, 150, 0));
     }
 
     virtual ~Ctx () {
-        DeleteObject (borderPen);
-        DeleteObject (wndBrush);
-        DeleteObject (displayBrush);
-        DeleteObject (beamBrush);
-        DeleteObject (beamPen);
+        for (int i = 0; i < 7; DeleteObject (objects [i++]));
     }
 };
 
@@ -48,8 +60,12 @@ char const *DISPLAY_CLS_NAME = "lampSimDispWin";
 inline double toDeg (double val) { return val * TO_DEG; }
 inline double toRad (double val) { return val * TO_RAD; }
 
-double elevation2range (Ctx *ctx) {
-    return ctx->mastHeight / tan (ctx->elevation * TO_RAD);
+double elevation2range (double mastHeight, double elevation) {
+    return mastHeight / tan (elevation * TO_RAD);
+}
+
+double range2elevation (double mastHeight, double range) {
+    return atan (mastHeight / range) * TO_DEG;
 }
 
 bool queryExit (HWND wnd) {
@@ -145,21 +161,27 @@ void paintDisplay (HWND wnd) {
         Ellipse (paintCtx, centerX - radius, centerY - radius, centerX + radius, centerY + radius);
     }
 
-    SelectObject (paintCtx, ctx->beamBrush);
-    SelectObject (paintCtx, ctx->beamPen);
-    POINT beamVertices [4];
-    auto range = elevation2range (ctx);
-    auto radius = range / MAX_RANGE * zone * 4.0;
-    project (ctx->bearing - 5, radius, beamVertices [0].x, beamVertices [0].y);
-    project (ctx->bearing + 5, radius, beamVertices [1].x, beamVertices [1].y);
-    beamVertices [2].x = centerX;
-    beamVertices [2].y = centerY;
-    beamVertices [3].x = beamVertices [0].x;
-    beamVertices [3].y = beamVertices [0].y;
-    Polygon (paintCtx, beamVertices, 4);
-    auto spotRadius = (beamVertices [1].x - beamVertices [0].x) >> 1;
-    Ellipse (paintCtx, beamVertices [0].x, beamVertices [0].y - spotRadius, beamVertices [1].x, beamVertices [1].y + spotRadius);
+    auto drawBeam = [ctx, paintCtx, zone, centerX, centerY, project] (double elevation, double brg, HPEN pen, HBRUSH brush) {
+        POINT beamVertices [4];
+        auto range = elevation2range (ctx->mastHeight, elevation);
+        auto radius = range / MAX_RANGE * zone * 4.0;
+        long spotX, spotY;
+        long spotRadius = (long) (radius * sin (5.0 * TO_RAD));
+        project (brg - 5, radius, beamVertices [0].x, beamVertices [0].y);
+        project (brg + 5, radius, beamVertices [1].x, beamVertices [1].y);
+        project (brg, radius, spotX, spotY);
+        beamVertices [2].x = centerX;
+        beamVertices [2].y = centerY;
+        beamVertices [3].x = beamVertices [0].x;
+        beamVertices [3].y = beamVertices [0].y;
+        SelectObject (paintCtx, pen);
+        SelectObject (paintCtx, brush);
+        Polygon (paintCtx, beamVertices, 4);
+        Ellipse (paintCtx, spotX - spotRadius, spotY - spotRadius, spotX + spotRadius, spotY + spotRadius);
+    };
 
+    drawBeam (ctx->actualElev, ctx->actualBrg, ctx->beamPen, ctx->beamBrush);
+    drawBeam (ctx->requestedElev, ctx->requestedBrg, ctx->beamPen2, ctx->beamBrush2);
     EndPaint (wnd, & data);
 }
 
@@ -196,6 +218,40 @@ void onMouseMove (HWND wnd, int clientX, int clientY) {
 
 void onRightButtonDown (HWND wnd, int x, int y) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
+    RECT client;
+    GetClientRect (wnd, & client);
+    auto width = client.right + 1;
+    auto height = client.bottom + 1;
+    auto centerX = client.right >> 1;
+    auto centerY = client.bottom >> 1;
+    auto zone = (centerX - 30) / 4;
+
+    auto dx = x - centerX;
+    auto dy = y - centerY;
+    auto hypo = sqrt (dx * dx + dy * dy);
+    double range;
+
+    if (dx == 0 && dy == 0) {
+        ctx->requestedBrg = 0.0;
+        range = 0.0;
+    } else {
+        if (dx == 0) {
+            ctx->requestedBrg = y < centerY ? 0.0 : PI;
+        } else if (dy == 0) {
+            ctx->requestedBrg = x > centerX ? PI * 0.5 : PI * 1.5;
+        } else {
+            ctx->requestedBrg = asin (dx / hypo);
+            if (dy > 0) {
+                ctx->requestedBrg = PI - ctx->requestedBrg;
+            }
+            if (ctx->requestedBrg < 0.0) ctx->requestedBrg += TWO_PI;
+            if (ctx->requestedBrg >= TWO_PI) ctx->requestedBrg -= TWO_PI;
+        }
+        range = (hypo / zone) * 1852.0 * 0.5;
+    }
+    ctx->requestedElev = range2elevation (ctx->mastHeight, range);
+    ctx->requestedBrg *= TO_DEG;
+    InvalidateRect (wnd, 0, 1);
     //TrackPopupMenu (GetSubMenu (ctx->contextMenu, 0), TPM_LEFTALIGN | TPM_TOPALIGN, ctx->clickX, ctx->clickY, 0, GetParent (wnd), 0);
 }
 
@@ -249,7 +305,7 @@ void initCommonControls () {
 }
 
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
-    Ctx ctx (instance, 10.0, 0.0, 0.25);
+    Ctx ctx (instance, 10.0, 0.0, 0.25, 0.0, 0.25);
 
     CoInitialize (0);
     initCommonControls ();
