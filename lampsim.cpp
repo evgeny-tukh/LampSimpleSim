@@ -13,7 +13,7 @@ static double const MAX_RANGE = 2.0 * 1852.0;
 
 struct Ctx {
     HINSTANCE instance;
-    HWND display;
+    HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
     RECT client;
     union {
         HGDIOBJ objects [7];
@@ -102,10 +102,23 @@ void initWindow (HWND wnd, void *data) {
 
     SetWindowLongPtr (wnd, GWLP_USERDATA, (LONG_PTR) data);
 
+    char buffer [100];
+    auto ftoa = [&buffer] (double val) {
+        sprintf (buffer, "%06.3f", val);
+        return buffer;
+    };
     auto minSize = (client.right > client.bottom ? client.bottom : client.right) - 20;
     ctx->display = CreateWindow (DISPLAY_CLS_NAME, "", WS_CHILD | WS_VISIBLE, 10, 10, minSize, minSize, wnd, 0, ctx->instance, ctx);
+    ctx->reqBrgValueLbl = createControl ("STATIC", "Requested bearing", SS_SIMPLE, true, minSize + 30, 10, 150, 20, IDC_STATIC);
+    ctx->reqElevValueLbl = createControl ("STATIC", "Requested elevation", SS_SIMPLE, true, minSize + 30, 50, 150, 20, IDC_STATIC);
+    ctx->actBrgValueLbl = createControl ("STATIC", "Actual bearing", SS_SIMPLE, true, minSize + 30, 90, 150, 20, IDC_STATIC);
+    ctx->actElevValueLbl = createControl ("STATIC", "Actual elevation", SS_SIMPLE, true, minSize + 30, 130, 150, 20, IDC_STATIC);
+    ctx->reqBrgValue = createControl ("EDIT", ftoa (ctx->requestedBrg), WS_BORDER, true, minSize + 200, 10, 150, 20, IDC_STATIC);
+    ctx->reqElevValue = createControl ("EDIT", ftoa (ctx->requestedElev), WS_BORDER, true, minSize + 200, 50, 150, 20, IDC_STATIC);
+    ctx->actBrgValue = createControl ("EDIT", ftoa (ctx->actualBrg), WS_BORDER, true, minSize + 200, 90, 150, 20, IDC_STATIC);
+    ctx->actElevValue = createControl ("EDIT", ftoa (ctx->actualElev), WS_BORDER, true, minSize + 200, 130, 150, 20, IDC_STATIC);
 
-    SetTimer (wnd, 100, 250, 0);
+    SetTimer (wnd, 200, 250, 0);
 }
 
 void doCommand (HWND wnd, uint16_t command) {
@@ -192,6 +205,14 @@ void onSize (HWND wnd, int width, int height) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     auto minSize = (width < height ? width : height) - 20;
     MoveWindow (ctx->display, 10, 10, minSize, minSize, true);
+    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 10, 150, 20, true);
+    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 50, 150, 20, true);
+    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 90, 150, 20, true);
+    MoveWindow (ctx->actElevValueLbl, minSize + 30, 130, 150, 20, true);
+    MoveWindow (ctx->reqBrgValue, minSize + 200, 10, 150, 20, true);
+    MoveWindow (ctx->reqElevValue, minSize + 200, 50, 150, 20, true);
+    MoveWindow (ctx->actBrgValue, minSize + 200, 90, 150, 20, true);
+    MoveWindow (ctx->actElevValue, minSize + 200, 130, 150, 20, true);
 }
 
 void updateWatchdog (HWND wnd) {
