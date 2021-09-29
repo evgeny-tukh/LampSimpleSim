@@ -14,6 +14,7 @@ static double const MAX_RANGE = 2.0 * 1852.0;
 struct Ctx {
     HINSTANCE instance;
     HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
+    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl;
     RECT client;
     union {
         HGDIOBJ objects [7];
@@ -79,6 +80,18 @@ void initDisplay (HWND wnd, void *data) {
     GetClientRect (wnd, & ctx->client);
 }
 
+double getDoubleValue (HWND wnd) {
+    char buffer [100];
+    GetWindowText (wnd, buffer, sizeof (buffer));
+    return atof (buffer);
+}
+
+char *ftoa (double val, const char *fmt = "%05.1f") {
+    static char buffer [100];
+    sprintf (buffer, fmt, val);
+    return buffer;
+}
+
 void initWindow (HWND wnd, void *data) {
     Ctx *ctx = (Ctx *) data;
     RECT client;
@@ -102,32 +115,56 @@ void initWindow (HWND wnd, void *data) {
 
     SetWindowLongPtr (wnd, GWLP_USERDATA, (LONG_PTR) data);
 
-    char buffer [100];
-    auto ftoa = [&buffer] (double val) {
-        sprintf (buffer, "%06.3f", val);
-        return buffer;
-    };
     auto minSize = (client.right > client.bottom ? client.bottom : client.right) - 20;
     ctx->display = CreateWindow (DISPLAY_CLS_NAME, "", WS_CHILD | WS_VISIBLE, 10, 10, minSize, minSize, wnd, 0, ctx->instance, ctx);
-    ctx->reqBrgValueLbl = createControl ("STATIC", "Requested bearing", SS_SIMPLE, true, minSize + 30, 10, 150, 20, IDC_STATIC);
-    ctx->reqElevValueLbl = createControl ("STATIC", "Requested elevation", SS_SIMPLE, true, minSize + 30, 50, 150, 20, IDC_STATIC);
-    ctx->actBrgValueLbl = createControl ("STATIC", "Actual bearing", SS_SIMPLE, true, minSize + 30, 90, 150, 20, IDC_STATIC);
-    ctx->actElevValueLbl = createControl ("STATIC", "Actual elevation", SS_SIMPLE, true, minSize + 30, 130, 150, 20, IDC_STATIC);
-    ctx->reqBrgValue = createControl ("EDIT", ftoa (ctx->requestedBrg), WS_BORDER, true, minSize + 200, 10, 150, 20, IDC_STATIC);
-    ctx->reqElevValue = createControl ("EDIT", ftoa (ctx->requestedElev), WS_BORDER, true, minSize + 200, 50, 150, 20, IDC_STATIC);
-    ctx->actBrgValue = createControl ("EDIT", ftoa (ctx->actualBrg), WS_BORDER, true, minSize + 200, 90, 150, 20, IDC_STATIC);
-    ctx->actElevValue = createControl ("EDIT", ftoa (ctx->actualElev), WS_BORDER, true, minSize + 200, 130, 150, 20, IDC_STATIC);
+    ctx->reqBrgValueLbl = createControl ("STATIC", "Requested bearing", SS_SIMPLE, true, minSize + 30, 15, 150, 20, IDC_STATIC);
+    ctx->reqElevValueLbl = createControl ("STATIC", "Requested elevation", SS_SIMPLE, true, minSize + 30, 55, 150, 20, IDC_STATIC);
+    ctx->actBrgValueLbl = createControl ("STATIC", "Actual bearing", SS_SIMPLE, true, minSize + 30, 95, 150, 20, IDC_STATIC);
+    ctx->actElevValueLbl = createControl ("STATIC", "Actual elevation", SS_SIMPLE, true, minSize + 30, 135, 150, 20, IDC_STATIC);
+    ctx->reqBrgValue = createControl ("EDIT", ftoa (ctx->requestedBrg), WS_BORDER, true, minSize + 200, 10, 50, 20, IDC_REQ_BEARING);
+    ctx->reqElevValue = createControl ("EDIT", ftoa (ctx->requestedElev, "%.3f"), WS_BORDER, true, minSize + 200, 50, 50, 20, IDC_REQ_ELEVATION);
+    ctx->actBrgValue = createControl ("EDIT", ftoa (ctx->actualBrg), WS_BORDER | ES_READONLY, true, minSize + 200, 90, 50, 20, IDC_ACT_BEARING);
+    ctx->actElevValue = createControl ("EDIT", ftoa (ctx->actualElev, "%.3f"), WS_BORDER | ES_READONLY, true, minSize + 200, 130, 50, 20, IDC_ACT_ELEVATION);
+    ctx->actRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), WS_BORDER | ES_READONLY, true, minSize + 200, 170, 50, 20, IDC_ACT_RANGE);
+    ctx->actRngValueLbl = createControl ("STATIC", "Actual range, m", SS_SIMPLE, true, minSize + 30, 175, 150, 20, IDC_STATIC);
+    ctx->reqRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), WS_BORDER, true, minSize + 200, 210, 50, 20, IDC_REQ_RANGE);
+    ctx->reqRngValueLbl = createControl ("STATIC", "Requested range, m", SS_SIMPLE, true, minSize + 30, 215, 150, 20, IDC_STATIC);
 
     SetTimer (wnd, 200, 250, 0);
 }
 
-void doCommand (HWND wnd, uint16_t command) {
+void doCommand (HWND wnd, uint16_t command, uint16_t notification) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
 
-    switch (command) {
-        case ID_EXIT: {
-            if (queryExit (wnd)) DestroyWindow (wnd);
-            break;
+    if (notification == EN_CHANGE) {
+        switch (command) {
+            case IDC_REQ_BEARING:
+                if (GetWindowTextLength (ctx->reqBrgValue) > 0) {
+                    ctx->requestedBrg = getDoubleValue (ctx->reqBrgValue);
+                }
+                break;
+            case IDC_ACT_BEARING:
+                if (GetWindowTextLength (ctx->actBrgValue) > 0) {
+                    ctx->actualBrg = getDoubleValue (ctx->actBrgValue);
+                }
+                break;
+            case IDC_REQ_ELEVATION:
+                if (GetWindowTextLength (ctx->reqElevValue) > 0) {
+                    ctx->requestedElev = getDoubleValue (ctx->reqElevValue);
+                }
+                break;
+            case IDC_ACT_ELEVATION:
+                if (GetWindowTextLength (ctx->actElevValue) > 0) {
+                    ctx->actualElev = getDoubleValue (ctx->actElevValue);
+                }
+                break;
+        }
+    } else {
+        switch (command) {
+            case ID_EXIT: {
+                if (queryExit (wnd)) DestroyWindow (wnd);
+                break;
+            }
         }
     }
 }
@@ -205,14 +242,18 @@ void onSize (HWND wnd, int width, int height) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     auto minSize = (width < height ? width : height) - 20;
     MoveWindow (ctx->display, 10, 10, minSize, minSize, true);
-    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 10, 150, 20, true);
-    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 50, 150, 20, true);
-    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 90, 150, 20, true);
-    MoveWindow (ctx->actElevValueLbl, minSize + 30, 130, 150, 20, true);
-    MoveWindow (ctx->reqBrgValue, minSize + 200, 10, 150, 20, true);
-    MoveWindow (ctx->reqElevValue, minSize + 200, 50, 150, 20, true);
-    MoveWindow (ctx->actBrgValue, minSize + 200, 90, 150, 20, true);
-    MoveWindow (ctx->actElevValue, minSize + 200, 130, 150, 20, true);
+    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 15, 150, 20, true);
+    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 55, 150, 20, true);
+    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 95, 150, 20, true);
+    MoveWindow (ctx->actElevValueLbl, minSize + 30, 135, 150, 20, true);
+    MoveWindow (ctx->reqBrgValue, minSize + 200, 10, 50, 20, true);
+    MoveWindow (ctx->reqElevValue, minSize + 200, 50, 50, 20, true);
+    MoveWindow (ctx->actBrgValue, minSize + 200, 90, 50, 20, true);
+    MoveWindow (ctx->actElevValue, minSize + 200, 130, 50, 20, true);
+    MoveWindow (ctx->actRngValue, minSize + 200, 170, 50, 20, true);
+    MoveWindow (ctx->actRngValueLbl, minSize + 30, 175, 150, 20, true);
+    MoveWindow (ctx->reqRngValue, minSize + 200, 210, 50, 20, true);
+    MoveWindow (ctx->reqRngValueLbl, minSize + 30, 215, 150, 20, true);
 }
 
 void updateWatchdog (HWND wnd) {
@@ -248,6 +289,8 @@ void updateWatchdog (HWND wnd) {
             }
 
             ctx->actualBrg += delta * sign;
+            if (ctx->actualBrg < 0.0) ctx->actualBrg += 360.0;
+            if (ctx->actualBrg > 360.0) ctx->actualBrg -= 360.0;
         }
         if (ctx->requestedElev != ctx->actualElev) {
             changed = true;
@@ -272,8 +315,22 @@ void updateWatchdog (HWND wnd) {
 
     if (changed) {
         ctx->lastCorrection = now;
-        InvalidateRect (wnd, 0, 1);
+        InvalidateRect (ctx->display, 0, 1);
     }
+    
+    auto setWindowTextIfChanged = [] (HWND wnd, char *text) {
+        char buffer [256];
+        GetWindowText (wnd, buffer, sizeof (buffer));
+
+        if (strcmp (buffer, text) != 0) SetWindowText (wnd, text);
+    };
+
+    setWindowTextIfChanged (ctx->reqBrgValue, ftoa (ctx->requestedBrg));
+    setWindowTextIfChanged (ctx->reqElevValue, ftoa (ctx->requestedElev, "%.3f"));
+    setWindowTextIfChanged (ctx->actBrgValue, ftoa (ctx->actualBrg));
+    setWindowTextIfChanged (ctx->actElevValue, ftoa (ctx->actualElev, "%.3f"));
+    setWindowTextIfChanged (ctx->reqRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"));
+    setWindowTextIfChanged (ctx->actRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"));
 }
 
 LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
@@ -283,7 +340,7 @@ LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
         case WM_TIMER:
             updateWatchdog (wnd); break;
         case WM_COMMAND:
-            doCommand (wnd, LOWORD (param1)); break;
+            doCommand (wnd, LOWORD (param1), HIWORD (param1)); break;
         case WM_SIZE:
             onSize (wnd, LOWORD (param2), HIWORD (param2)); break;
         case WM_CREATE:
