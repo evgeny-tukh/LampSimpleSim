@@ -8,49 +8,7 @@
 #include <memory.h>
 #include "resource.h"
 #include "editbox.h"
-
-static double const MAX_RANGE = 2.0 * 1852.0;
-
-struct Ctx {
-    HINSTANCE instance;
-    HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
-    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl;
-    RECT client;
-    union {
-        HGDIOBJ objects [7];
-        struct {
-            HBRUSH displayBrush, wndBrush, beamBrush, beamBrush2;
-            HPEN borderPen, beamPen, beamPen2;
-        };
-    };
-    double actualBrg;
-    double actualElev;
-    double requestedBrg;
-    double requestedElev;
-    double mastHeight;
-    clock_t lastCorrection;
-
-    Ctx (
-        HINSTANCE _instance,
-        double _mastHeight,
-        double _actualBrg,
-        double _actualElev,
-        double _requestedBrg,
-        double _requestedElev
-    ): instance (_instance), actualBrg (_actualBrg), actualElev (_actualElev), requestedBrg (_requestedBrg), requestedElev (_requestedElev), mastHeight (_mastHeight), lastCorrection (0) {
-        borderPen = CreatePen (PS_SOLID, 3, 0);
-        displayBrush = CreateSolidBrush (RGB (100, 100, 100));
-        wndBrush = CreateSolidBrush (RGB (200, 200, 200));
-        beamPen = CreatePen (PS_SOLID, 1, RGB (255, 200, 0));
-        beamPen2 = CreatePen (PS_SOLID, 1, RGB (200, 150, 0));
-        beamBrush = CreateSolidBrush (RGB (255, 200, 0));
-        beamBrush2 = CreateSolidBrush (RGB (200, 150, 0));
-    }
-
-    virtual ~Ctx () {
-        for (int i = 0; i < 7; DeleteObject (objects [i++]));
-    }
-};
+#include "defs.h"
 
 const double PI = 3.1415926535897932384626433832795;
 const double TWO_PI = PI + PI;
@@ -129,6 +87,7 @@ void initWindow (HWND wnd, void *data) {
     ctx->actRngValueLbl = createControl ("STATIC", "Actual range, m", SS_SIMPLE, true, minSize + 30, 175, 150, 20, IDC_STATIC);
     ctx->reqRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), WS_BORDER, true, minSize + 200, 210, 50, 20, IDC_REQ_RANGE);
     ctx->reqRngValueLbl = createControl ("STATIC", "Requested range, m", SS_SIMPLE, true, minSize + 30, 215, 150, 20, IDC_STATIC);
+    ctx->console = createControl ("LISTBOX", "", WS_VSCROLL | WS_BORDER, true, minSize + 30, 240, client.right - minSize - 40, client.bottom - 240, IDC_CONSOLE);
 
     SetTimer (wnd, 200, 250, 0);
 }
@@ -139,23 +98,45 @@ void doCommand (HWND wnd, uint16_t command, uint16_t notification) {
     if (notification == EN_CHANGE) {
         switch (command) {
             case IDC_REQ_BEARING:
-                if (GetWindowTextLength (ctx->reqBrgValue) > 0) {
+                if (ctx->ctlProtectMask & CtlProtectFlags::REQ_BRG) {
+                    ctx->unprotect (CtlProtectFlags::REQ_BRG);
+                } else if (GetWindowTextLength (ctx->reqBrgValue) > 0) {
                     ctx->requestedBrg = getDoubleValue (ctx->reqBrgValue);
                 }
                 break;
             case IDC_ACT_BEARING:
-                if (GetWindowTextLength (ctx->actBrgValue) > 0) {
+                if (ctx->ctlProtectMask & CtlProtectFlags::ACT_BRG) {
+                    ctx->unprotect (CtlProtectFlags::ACT_BRG);
+                } else if (GetWindowTextLength (ctx->actBrgValue) > 0) {
                     ctx->actualBrg = getDoubleValue (ctx->actBrgValue);
                 }
                 break;
             case IDC_REQ_ELEVATION:
-                if (GetWindowTextLength (ctx->reqElevValue) > 0) {
+                if (ctx->ctlProtectMask & CtlProtectFlags::REQ_ELEV) {
+                    ctx->unprotect (CtlProtectFlags::REQ_ELEV);
+                } else if (GetWindowTextLength (ctx->reqElevValue) > 0) {
                     ctx->requestedElev = getDoubleValue (ctx->reqElevValue);
                 }
                 break;
             case IDC_ACT_ELEVATION:
-                if (GetWindowTextLength (ctx->actElevValue) > 0) {
+                if (ctx->ctlProtectMask & CtlProtectFlags::ACT_ELEV) {
+                    ctx->unprotect (CtlProtectFlags::ACT_ELEV);
+                } else if (GetWindowTextLength (ctx->actElevValue) > 0) {
                     ctx->actualElev = getDoubleValue (ctx->actElevValue);
+                }
+                break;
+            case IDC_REQ_RANGE:
+                if (ctx->ctlProtectMask & CtlProtectFlags::REQ_RNG) {
+                    ctx->unprotect (CtlProtectFlags::REQ_RNG);
+                } else if (GetWindowTextLength (ctx->reqRngValue) > 0) {
+                    ctx->requestedElev = range2elevation (ctx->mastHeight, getDoubleValue (ctx->reqRngValue));
+                }
+                break;
+            case IDC_ACT_RANGE:
+                if (ctx->ctlProtectMask & CtlProtectFlags::ACT_RNG) {
+                    ctx->unprotect (CtlProtectFlags::ACT_RNG);
+                } else if (GetWindowTextLength (ctx->reqRngValue) > 0) {
+                    ctx->actualElev = range2elevation (ctx->mastHeight, getDoubleValue (ctx->actRngValue));
                 }
                 break;
         }
@@ -254,6 +235,7 @@ void onSize (HWND wnd, int width, int height) {
     MoveWindow (ctx->actRngValueLbl, minSize + 30, 175, 150, 20, true);
     MoveWindow (ctx->reqRngValue, minSize + 200, 210, 50, 20, true);
     MoveWindow (ctx->reqRngValueLbl, minSize + 30, 215, 150, 20, true);
+    MoveWindow (ctx->console, minSize + 30, 240, width - minSize - 40, height - 240, true);
 }
 
 void updateWatchdog (HWND wnd) {
@@ -318,19 +300,24 @@ void updateWatchdog (HWND wnd) {
         InvalidateRect (ctx->display, 0, 1);
     }
     
-    auto setWindowTextIfChanged = [] (HWND wnd, char *text) {
+    auto setWindowTextIfChanged = [ctx] (HWND wnd, char *text, CtlProtectFlags flag) {
         char buffer [256];
         GetWindowText (wnd, buffer, sizeof (buffer));
 
-        if (strcmp (buffer, text) != 0) SetWindowText (wnd, text);
+        if (strcmp (buffer, text) != 0) {
+            SetWindowText (wnd, text);
+            ctx->protect (flag);
+        }
     };
 
-    setWindowTextIfChanged (ctx->reqBrgValue, ftoa (ctx->requestedBrg));
-    setWindowTextIfChanged (ctx->reqElevValue, ftoa (ctx->requestedElev, "%.3f"));
-    setWindowTextIfChanged (ctx->actBrgValue, ftoa (ctx->actualBrg));
-    setWindowTextIfChanged (ctx->actElevValue, ftoa (ctx->actualElev, "%.3f"));
-    setWindowTextIfChanged (ctx->reqRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"));
-    setWindowTextIfChanged (ctx->actRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"));
+    setWindowTextIfChanged (ctx->reqBrgValue, ftoa (ctx->requestedBrg), CtlProtectFlags::REQ_BRG);
+    setWindowTextIfChanged (ctx->reqElevValue, ftoa (ctx->requestedElev, "%.3f"), CtlProtectFlags::REQ_ELEV);
+    setWindowTextIfChanged (ctx->actBrgValue, ftoa (ctx->actualBrg), CtlProtectFlags::ACT_BRG);
+    setWindowTextIfChanged (ctx->actElevValue, ftoa (ctx->actualElev, "%.3f"), CtlProtectFlags::ACT_ELEV);
+    setWindowTextIfChanged (ctx->reqRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), CtlProtectFlags::REQ_RNG);
+    setWindowTextIfChanged (ctx->actRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), CtlProtectFlags::ACT_RNG);
+
+    sendLampSentence (ctx->actualBrg, ctx->actualElev, ctx);
 }
 
 LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
@@ -449,7 +436,7 @@ void initCommonControls () {
 }
 
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
-    Ctx ctx (instance, 10.0, 0.0, 0.25, 0.0, 0.25);
+    Ctx ctx (0, instance, 10.0, 0.0, 0.25, 0.0, 0.25);
 
     CoInitialize (0);
     initCommonControls ();
