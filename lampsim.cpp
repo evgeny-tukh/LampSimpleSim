@@ -53,7 +53,9 @@ char *ftoa (double val, const char *fmt = "%05.1f") {
 void initWindow (HWND wnd, void *data) {
     Ctx *ctx = (Ctx *) data;
     RECT client;
-
+    std::vector<std::string> ports;
+    
+    getSerialPortsList (ports);
     GetClientRect (wnd, & client);
 
     auto createControl = [&wnd, &ctx] (const char *className, const char *text, uint32_t style, bool visible, int x, int y, int width, int height, uint64_t id) {
@@ -89,7 +91,16 @@ void initWindow (HWND wnd, void *data) {
     ctx->reqRngValueLbl = createControl ("STATIC", "Requested range, m", SS_SIMPLE, true, minSize + 30, 245, 150, 20, IDC_STATIC);
     ctx->console = createControl ("LISTBOX", "", WS_VSCROLL | WS_BORDER, true, minSize + 30, 270, client.right - minSize - 40, client.bottom - 270, IDC_CONSOLE);
     ctx->portCtlButton = createControl ("BUTTON", "Open", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 30, 5, 100, 20, IDC_TOGGLE_PORT);
-    ctx->portSelector = createControl ("COMBOBOX", "Open", CBS_DROPDOWNLIST, true, minSize + 160, 5, 100, 20, IDC_PORT);
+    ctx->portSelector = createControl ("COMBOBOX", "Open", CBS_DROPDOWNLIST | CBS_AUTOHSCROLL, true, minSize + 160, 5, 100, 100, IDC_PORT);
+
+    for (auto& port: ports) {
+        auto item = SendMessage (ctx->portSelector, CB_ADDSTRING, 0, (LPARAM) port.c_str ());
+        SendMessage (ctx->portSelector, CB_SETITEMDATA, item, std::atoi (port.c_str () + 3));
+    }
+
+    if (ports.size () > 0) {
+        SendMessage (ctx->portSelector, CB_SETCURSEL, 0, 0);
+    }
 
     SetTimer (wnd, 200, 250, 0);
 }
@@ -144,6 +155,22 @@ void doCommand (HWND wnd, uint16_t command, uint16_t notification) {
         }
     } else {
         switch (command) {
+            case IDC_TOGGLE_PORT: {
+                if (ctx->port == INVALID_HANDLE_VALUE) {
+                    if (openPort (ctx)) {
+                        SetWindowText (ctx->portCtlButton, "Close");
+                        EnableWindow (ctx->portSelector, 0);
+                    }
+                } else {
+                    if (ctx->locker) ctx->lock ();
+                    SetWindowText (ctx->portCtlButton, "Open");
+                    EnableWindow (ctx->portSelector, 1);
+                    CloseHandle (ctx->port);
+                    ctx->port = INVALID_HANDLE_VALUE;
+                    if (ctx->locker) ctx->unlock ();
+                }
+                break;
+            }
             case ID_EXIT: {
                 if (queryExit (wnd)) DestroyWindow (wnd);
                 break;
@@ -246,6 +273,11 @@ void updateWatchdog (HWND wnd) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     clock_t now = clock ();
     bool changed = false;
+if(ctx->port!=INVALID_HANDLE_VALUE){
+    int iii=0;
+    ++iii;
+    --iii;
+}
 
     if ((now - ctx->lastCorrection) > (CLOCKS_PER_SEC / 4)) {
         if (ctx->requestedBrg != ctx->actualBrg) {
@@ -322,6 +354,14 @@ void updateWatchdog (HWND wnd) {
     setWindowTextIfChanged (ctx->actRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), CtlProtectFlags::ACT_RNG);
 
     sendLampSentence (ctx->actualBrg, ctx->actualElev, ctx);
+
+    if (ctx->locker) ctx->lock ();
+    for (auto& sentence: ctx->incomingStrings) {
+        addToConsole ((char *) sentence.c_str (), ctx);
+    }
+
+    ctx->incomingStrings.clear ();
+    if (ctx->locker) ctx->unlock ();
 }
 
 LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
@@ -463,6 +503,8 @@ int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int sho
     ShowWindow (mainWnd, SW_SHOW);
     UpdateWindow (mainWnd);
 
+    startReader (& ctx);
+
     MSG msg;
 
     while (GetMessage (&msg, 0, 0, 0)) {
@@ -470,3 +512,16 @@ int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int sho
         DispatchMessage (&msg);
     }
 }
+
+void addToConsole (char *text, Ctx *ctx) {
+    auto item = SendMessage (ctx->console, LB_ADDSTRING, 0, (LPARAM) text);
+
+    if (item > 100) {
+        SendMessage (ctx->console, LB_RESETCONTENT, item, 0);
+        
+        item = SendMessage (ctx->console, LB_ADDSTRING, 0, (LPARAM) text);
+    }
+
+    SendMessage (ctx->console, LB_SETCURSEL, item, 0);
+}
+

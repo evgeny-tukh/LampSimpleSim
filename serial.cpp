@@ -6,18 +6,19 @@
 #include <thread>
 #include "defs.h"
 
+const uint8_t ASCII_BEL = 0x07;
+const uint8_t ASCII_BS = 0x08;
+const uint8_t ASCII_LF = 0x0A;
+const uint8_t ASCII_CR = 0x0D;
+const uint8_t ASCII_XON = 0x11;
+const uint8_t ASCII_XOFF = 0x13;
+
 uint8_t calcCrc (char *sentence) {
     uint8_t crc = sentence [1];
 
     for (int i = 2; sentence [i] != '*'; crc ^= sentence [i++]);
 
     return crc;
-}
-
-void addToConsole (char *text, Ctx *ctx) {
-    auto item = SendMessage (ctx->console, LB_ADDSTRING, 0, (LPARAM) text);
-
-    SendMessage (ctx->console, LB_SETCURSEL, item, 0);
 }
 
 void finalizeSendSentence (char *sentence, Ctx *ctx) {
@@ -28,20 +29,21 @@ void finalizeSendSentence (char *sentence, Ctx *ctx) {
     sprintf (tail, "%02X\r\n", calcCrc (sentence));
     strcat (sentence, tail);
 
-    unsigned long bytesSent;
+    unsigned long bytesSent, size;
 
-    if (copyToConsole) addToConsole (sentence, ctx);
+    //if (copyToConsole) addToConsole (sentence, ctx);
 
-    if (!fakeMode) {
-        if (ctx->locker) ctx->locker->lock ();
-        WriteFile (ctx->port, sentence, strlen (sentence), & bytesSent, 0);
-        if (ctx->locker) ctx->locker->unlock ();
+    if (!fakeMode && ctx->port != INVALID_HANDLE_VALUE) {
+        size = strlen (sentence);
+        if (ctx->locker) ctx->lock ();
+        WriteFile (ctx->port, sentence, size, & bytesSent, 0);
+        if (ctx->locker) ctx->unlock ();
     }
 }
 
 void sendLampSentence (double brg, double elevation, Ctx *ctx) {
     char sentence [100];
-    sprintf (sentence, "$PSMACK,01,%.1f,%.2f,100,00*", brg, elevation);
+    sprintf (sentence, "$,01,%d,%.2f,100,0*", (int) brg, elevation);
     finalizeSendSentence (sentence, ctx);
 }
 
@@ -97,6 +99,7 @@ void readAvailableData (Ctx *ctx) {
     char buffer [5000];
 
     do {
+        printf ("reading...\n");
         ClearCommError (ctx->port, & errorFlags, & commState);
 
         bool overflow = (errorFlags & (CE_RXOVER | CE_OVERRUN)) != 0L;
@@ -105,24 +108,101 @@ void readAvailableData (Ctx *ctx) {
             buffer [bytesRead] = '\0';
 
             if (*buffer) {
-                if (ctx->outputFlags & OutputFlags::COPY_TO_CONCOLE) addToConsole (buffer, ctx);
+                if (ctx->outputFlags & OutputFlags::COPY_TO_CONCOLE) {
+                    //ctx->incomingStrings.emplace_back (buffer);
+                    addToConsole (buffer, ctx);
+                }
 
                 parseCtlUnitData (buffer, ctx);
             }
 
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            Sleep (10);
         }
     } while (commState.cbInQue > 0);
 }
 
-void readerProc (Ctx *ctx) {
+DWORD readerProc (void *param) {
+    Ctx *ctx = (Ctx *) param;
     while (ctx->keepRunning) {
-        if ((ctx->outputFlags & OutputFlags::FAKE_MODE) == 0) {
-            if (ctx->locker) ctx->locker->lock ();
+        if ((ctx->outputFlags & OutputFlags::FAKE_MODE) == 0 && ctx->port != INVALID_HANDLE_VALUE) {
+            if (ctx->locker) ctx->lock ();
             readAvailableData (ctx);
-            if (ctx->locker) ctx->locker->unlock ();
+            if (ctx->locker) ctx->unlock ();
         }
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        Sleep (10);
     }
+    return 0;
+}
+
+void startReader (Ctx *ctx) {
+    ctx->reader = CreateThread (0, 0, readerProc, ctx, 0, 0);
+}
+
+void getSerialPortsList (std::vector<std::string>& ports) {
+    HKEY scomKey;
+    int count = 0;
+    DWORD error = RegOpenKeyEx (HKEY_LOCAL_MACHINE, "Hardware\\DeviceMap\\SerialComm", 0, KEY_QUERY_VALUE, & scomKey);
+
+    if (error == S_OK) {
+        char valueName[100], valueValue[100];
+        unsigned long nameSize, valueSize, valueType;
+        bool valueFound;
+
+        ports.clear ();
+
+        do {
+            nameSize = sizeof (valueName);
+            valueSize = sizeof (valueValue);
+            valueFound = RegEnumValue (scomKey, (unsigned long) count ++, valueName, & nameSize, 0, & valueType, (unsigned char *) valueValue, & valueSize) == S_OK;
+
+            if (valueFound) ports.push_back (valueValue);
+        } while (valueFound);
+
+        RegCloseKey (scomKey);
+    }
+}
+
+bool openPort (Ctx *ctx) {
+    auto selection = SendMessage (ctx->portSelector, CB_GETCURSEL, 0, 0);
+    auto portNo = SendMessage (ctx->portSelector, CB_GETITEMDATA, selection, 0);
+    char portName [100];
+    sprintf (portName, "\\\\.\\COM%Id", portNo);
+    
+    ctx->port = CreateFile (portName, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+
+    bool result = ctx->port != INVALID_HANDLE_VALUE;
+
+    if (result) {
+        DCB dcb;
+
+        SetupComm (ctx->port, 4096, 4096);
+        PurgeComm (ctx->port, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
+
+        memset (& dcb, 0, sizeof (dcb));
+
+        GetCommState (ctx->port, & dcb);
+
+        dcb.BaudRate = CBR_115200;
+        dcb.ByteSize = 8;
+        dcb.StopBits = ONESTOPBIT;
+        dcb.Parity = NOPARITY;
+        dcb.fBinary = 1;
+        dcb.fParity = 1;
+        dcb.fInX =
+        dcb.fOutX = 1;
+        dcb.XonChar = ASCII_XON;
+        dcb.XoffChar = ASCII_XOFF;
+        dcb.XonLim = 100;
+        dcb.XoffLim = 100;
+
+        if (!SetCommState (ctx->port, & dcb)) {
+            CloseHandle (ctx->port);
+
+            ctx->port = INVALID_HANDLE_VALUE;
+            result = false;
+        }
+    }
+
+    return result;
 }

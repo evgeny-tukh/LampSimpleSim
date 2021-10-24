@@ -5,8 +5,6 @@ static double const MAX_RANGE = 2.0 * 1852.0;
 #include <Windows.h>
 #include <cstdint>
 #include <time.h>
-#include <mutex>
-#include <thread>
 
 enum OutputFlags {
     FAKE_MODE = 1,
@@ -26,7 +24,7 @@ struct Ctx {
     uint8_t ctlProtectMask;
     HINSTANCE instance;
     HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
-    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl, console;
+    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl, console, portCtlButton, portSelector;
     RECT client;
     uint8_t outputFlags;
     HANDLE port;
@@ -43,9 +41,11 @@ struct Ctx {
     double requestedElev;
     double mastHeight;
     clock_t lastCorrection;
-    std::mutex *locker;
-    std::thread *reader;
+    HANDLE locker, reader;
+    std::vector<std::string> incomingStrings;
     bool keepRunning;
+    uint8_t requestedFocus;
+    uint8_t actualFocus;
 
     Ctx (
         uint8_t _ctlProtectMask,
@@ -53,8 +53,10 @@ struct Ctx {
         double _mastHeight,
         double _actualBrg,
         double _actualElev,
+        uint8_t _actualFocus,
         double _requestedBrg,
-        double _requestedElev
+        double _requestedElev,
+        uint8_t _requestedFocus
     ):
     ctlProtectMask (_ctlProtectMask),
     instance (_instance),
@@ -65,10 +67,14 @@ struct Ctx {
     mastHeight (_mastHeight),
     lastCorrection (0),
     port (INVALID_HANDLE_VALUE),
-    locker (0),
+    locker (CreateMutex (0, 0, "LampSimLocker")),
     reader (0),
     keepRunning (false),
-    outputFlags (OutputFlags::COPY_TO_CONCOLE | OutputFlags::FAKE_MODE) {
+    requestedFocus (_requestedFocus),
+    actualFocus (_actualFocus),
+    portCtlButton (0),
+    portSelector (0),
+    outputFlags (OutputFlags::COPY_TO_CONCOLE /*| OutputFlags::FAKE_MODE*/) {
         borderPen = CreatePen (PS_SOLID, 3, 0);
         displayBrush = CreateSolidBrush (RGB (100, 100, 100));
         wndBrush = CreateSolidBrush (RGB (200, 200, 200));
@@ -80,14 +86,13 @@ struct Ctx {
 
     virtual ~Ctx () {
         if (locker) {
-            locker->unlock ();
+            unlock ();
 
-            delete locker; locker = 0;
+            CloseHandle (locker);
         }
         if (reader) {
-            if (reader->joinable ()) TerminateThread (reader->native_handle (), 0);
-
-            delete reader;
+            if (WaitForSingleObject (reader, 1000) != WAIT_OBJECT_0) TerminateThread (reader, 0);
+            CloseHandle (reader);
         }
         for (int i = 0; i < 7; DeleteObject (objects [i++]));
     }
@@ -98,6 +103,16 @@ struct Ctx {
     void unprotect (CtlProtectFlags flag) {
         ctlProtectMask &= (~flag);
     }
+    void lock () {
+        if (locker) WaitForSingleObject (locker, INFINITE);
+    }
+    void unlock () {
+        if (locker) ReleaseMutex (locker);
+    }
 };
 
 void sendLampSentence (double brg, double elevation, Ctx *ctx);
+void getSerialPortsList (std::vector<std::string>& ports);
+bool openPort (Ctx *ctx);
+void startReader (Ctx *ctx);
+void addToConsole (char *text, Ctx *ctx);
