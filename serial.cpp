@@ -75,7 +75,7 @@ int splitFields (char *source, std::vector<std::string>& fields) {
     return fields.size ();
 }
 
-void parseLampFeedback (char *source, Ctx *ctx) {
+void parseCtlUnitData (char *source, Ctx *ctx) {
     std::vector<std::string> fields;
     int numOfFields = splitFields (source, fields);
 
@@ -87,6 +87,7 @@ void parseLampFeedback (char *source, Ctx *ctx) {
 
         ctx->requestedElev = atof (fields [2].c_str ());
         ctx->requestedBrg = atof (fields [1].c_str ());
+        ctx->requestedFocus = std::atoi (fields [3].c_str ());
     }
 }
 
@@ -106,7 +107,7 @@ void readAvailableData (Ctx *ctx) {
             if (*buffer) {
                 if (ctx->outputFlags & OutputFlags::COPY_TO_CONCOLE) addToConsole (buffer, ctx);
 
-                parseLampFeedback (buffer, ctx);
+                parseCtlUnitData (buffer, ctx);
             }
 
             std::this_thread::sleep_for (std::chrono::milliseconds (1));

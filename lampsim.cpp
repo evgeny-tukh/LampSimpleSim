@@ -75,19 +75,21 @@ void initWindow (HWND wnd, void *data) {
 
     auto minSize = (client.right > client.bottom ? client.bottom : client.right) - 20;
     ctx->display = CreateWindow (DISPLAY_CLS_NAME, "", WS_CHILD | WS_VISIBLE, 10, 10, minSize, minSize, wnd, 0, ctx->instance, ctx);
-    ctx->reqBrgValueLbl = createControl ("STATIC", "Requested bearing", SS_SIMPLE, true, minSize + 30, 15, 150, 20, IDC_STATIC);
-    ctx->reqElevValueLbl = createControl ("STATIC", "Requested elevation", SS_SIMPLE, true, minSize + 30, 55, 150, 20, IDC_STATIC);
-    ctx->actBrgValueLbl = createControl ("STATIC", "Actual bearing", SS_SIMPLE, true, minSize + 30, 95, 150, 20, IDC_STATIC);
-    ctx->actElevValueLbl = createControl ("STATIC", "Actual elevation", SS_SIMPLE, true, minSize + 30, 135, 150, 20, IDC_STATIC);
-    ctx->reqBrgValue = createControl ("EDIT", ftoa (ctx->requestedBrg), WS_BORDER, true, minSize + 200, 10, 50, 20, IDC_REQ_BEARING);
-    ctx->reqElevValue = createControl ("EDIT", ftoa (ctx->requestedElev, "%.3f"), WS_BORDER, true, minSize + 200, 50, 50, 20, IDC_REQ_ELEVATION);
-    ctx->actBrgValue = createControl ("EDIT", ftoa (ctx->actualBrg), WS_BORDER | ES_READONLY, true, minSize + 200, 90, 50, 20, IDC_ACT_BEARING);
-    ctx->actElevValue = createControl ("EDIT", ftoa (ctx->actualElev, "%.3f"), WS_BORDER | ES_READONLY, true, minSize + 200, 130, 50, 20, IDC_ACT_ELEVATION);
-    ctx->actRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), WS_BORDER | ES_READONLY, true, minSize + 200, 170, 50, 20, IDC_ACT_RANGE);
-    ctx->actRngValueLbl = createControl ("STATIC", "Actual range, m", SS_SIMPLE, true, minSize + 30, 175, 150, 20, IDC_STATIC);
-    ctx->reqRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), WS_BORDER, true, minSize + 200, 210, 50, 20, IDC_REQ_RANGE);
-    ctx->reqRngValueLbl = createControl ("STATIC", "Requested range, m", SS_SIMPLE, true, minSize + 30, 215, 150, 20, IDC_STATIC);
-    ctx->console = createControl ("LISTBOX", "", WS_VSCROLL | WS_BORDER, true, minSize + 30, 240, client.right - minSize - 40, client.bottom - 240, IDC_CONSOLE);
+    ctx->reqBrgValueLbl = createControl ("STATIC", "Requested bearing", SS_SIMPLE, true, minSize + 30, 45, 150, 20, IDC_STATIC);
+    ctx->reqElevValueLbl = createControl ("STATIC", "Requested elevation", SS_SIMPLE, true, minSize + 30, 85, 150, 20, IDC_STATIC);
+    ctx->actBrgValueLbl = createControl ("STATIC", "Actual bearing", SS_SIMPLE, true, minSize + 30, 125, 150, 20, IDC_STATIC);
+    ctx->actElevValueLbl = createControl ("STATIC", "Actual elevation", SS_SIMPLE, true, minSize + 30, 155, 150, 20, IDC_STATIC);
+    ctx->reqBrgValue = createControl ("EDIT", ftoa (ctx->requestedBrg), WS_BORDER, true, minSize + 200, 40, 50, 20, IDC_REQ_BEARING);
+    ctx->reqElevValue = createControl ("EDIT", ftoa (ctx->requestedElev, "%.3f"), WS_BORDER, true, minSize + 200, 90, 50, 20, IDC_REQ_ELEVATION);
+    ctx->actBrgValue = createControl ("EDIT", ftoa (ctx->actualBrg), WS_BORDER | ES_READONLY, true, minSize + 200, 120, 50, 20, IDC_ACT_BEARING);
+    ctx->actElevValue = createControl ("EDIT", ftoa (ctx->actualElev, "%.3f"), WS_BORDER | ES_READONLY, true, minSize + 200, 150, 50, 20, IDC_ACT_ELEVATION);
+    ctx->actRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), WS_BORDER | ES_READONLY, true, minSize + 200, 200, 50, 20, IDC_ACT_RANGE);
+    ctx->actRngValueLbl = createControl ("STATIC", "Actual range, m", SS_SIMPLE, true, minSize + 30, 205, 150, 20, IDC_STATIC);
+    ctx->reqRngValue = createControl ("EDIT", ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), WS_BORDER, true, minSize + 200, 240, 50, 20, IDC_REQ_RANGE);
+    ctx->reqRngValueLbl = createControl ("STATIC", "Requested range, m", SS_SIMPLE, true, minSize + 30, 245, 150, 20, IDC_STATIC);
+    ctx->console = createControl ("LISTBOX", "", WS_VSCROLL | WS_BORDER, true, minSize + 30, 270, client.right - minSize - 40, client.bottom - 270, IDC_CONSOLE);
+    ctx->portCtlButton = createControl ("BUTTON", "Open", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 30, 5, 100, 20, IDC_TOGGLE_PORT);
+    ctx->portSelector = createControl ("COMBOBOX", "Open", CBS_DROPDOWNLIST, true, minSize + 160, 5, 100, 20, IDC_PORT);
 
     SetTimer (wnd, 200, 250, 0);
 }
@@ -223,19 +225,21 @@ void onSize (HWND wnd, int width, int height) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     auto minSize = (width < height ? width : height) - 20;
     MoveWindow (ctx->display, 10, 10, minSize, minSize, true);
-    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 15, 150, 20, true);
-    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 55, 150, 20, true);
-    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 95, 150, 20, true);
-    MoveWindow (ctx->actElevValueLbl, minSize + 30, 135, 150, 20, true);
-    MoveWindow (ctx->reqBrgValue, minSize + 200, 10, 50, 20, true);
-    MoveWindow (ctx->reqElevValue, minSize + 200, 50, 50, 20, true);
-    MoveWindow (ctx->actBrgValue, minSize + 200, 90, 50, 20, true);
-    MoveWindow (ctx->actElevValue, minSize + 200, 130, 50, 20, true);
-    MoveWindow (ctx->actRngValue, minSize + 200, 170, 50, 20, true);
-    MoveWindow (ctx->actRngValueLbl, minSize + 30, 175, 150, 20, true);
-    MoveWindow (ctx->reqRngValue, minSize + 200, 210, 50, 20, true);
-    MoveWindow (ctx->reqRngValueLbl, minSize + 30, 215, 150, 20, true);
-    MoveWindow (ctx->console, minSize + 30, 240, width - minSize - 40, height - 240, true);
+    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 45, 150, 20, true);
+    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 85, 150, 20, true);
+    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 125, 150, 20, true);
+    MoveWindow (ctx->actElevValueLbl, minSize + 30, 155, 150, 20, true);
+    MoveWindow (ctx->reqBrgValue, minSize + 200, 40, 50, 20, true);
+    MoveWindow (ctx->reqElevValue, minSize + 200, 80, 50, 20, true);
+    MoveWindow (ctx->actBrgValue, minSize + 200, 120, 50, 20, true);
+    MoveWindow (ctx->actElevValue, minSize + 200, 150, 50, 20, true);
+    MoveWindow (ctx->actRngValue, minSize + 200, 200, 50, 20, true);
+    MoveWindow (ctx->actRngValueLbl, minSize + 30, 205, 150, 20, true);
+    MoveWindow (ctx->reqRngValue, minSize + 200, 230, 50, 20, true);
+    MoveWindow (ctx->reqRngValueLbl, minSize + 30, 245, 150, 20, true);
+    MoveWindow (ctx->portCtlButton, minSize + 30, 5, 100, 20, true);
+    MoveWindow (ctx->portSelector, minSize + 160, 5, 100, 20, true);
+    MoveWindow (ctx->console, minSize + 30, 270, width - minSize - 40, height - 270, true);
 }
 
 void updateWatchdog (HWND wnd) {
@@ -436,7 +440,7 @@ void initCommonControls () {
 }
 
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
-    Ctx ctx (0, instance, 10.0, 0.0, 0.25, 0.0, 0.25);
+    Ctx ctx (0, instance, 10.0, 0.0, 0.25, 99, 0.0, 0.25, 99);
 
     CoInitialize (0);
     initCommonControls ();
