@@ -16,7 +16,7 @@ const uint8_t ASCII_XOFF = 0x13;
 uint8_t calcCrc (char *sentence) {
     uint8_t crc = sentence [1];
 
-    for (int i = 2; sentence [i] != '*'; crc ^= sentence [i++]);
+    for (int i = 2; sentence [i] != '*' && i < 81; crc ^= sentence [i++]);
 
     return crc;
 }
@@ -60,17 +60,21 @@ int splitFields (char *source, std::vector<std::string>& fields) {
 
     fields.clear ();
 
-    for (char *chr = source + 1, *begin = source; *chr; ++ chr) {
+    std::string field;
+
+    for (char *chr = source + 1; *chr; ++ chr) {
         if (*chr == ',') {
-            fields.emplace_back (source, chr - begin - 1);
-            begin = chr + 1;
+            fields.emplace_back (field.c_str ());
+            field.clear ();
         } else if (*chr == '*') {
-            fields.emplace_back (source, chr - begin - 1);
+            fields.emplace_back (field.c_str ());
             uint8_t crc = htodec (chr [1]) * 16 + htodec (chr [2]);
 
             if (crc != actualCrc) return 0;
 
             *chr = '\0';
+        } else {
+            field += *chr;
         }
     }
 
@@ -82,7 +86,7 @@ void parseCtlUnitData (char *source, Ctx *ctx) {
     int numOfFields = splitFields (source, fields);
 
     if (numOfFields > 4) {
-        int lampID = atoi (fields [0].c_str () + 1);
+        int lampID = atoi (fields [0].c_str ());
         if (lampID != 1) {
             printf ("Invalid lamp %d\n", lampID); return;
         }
@@ -99,24 +103,27 @@ void readAvailableData (Ctx *ctx) {
     char buffer [5000];
 
     do {
-        printf ("reading...\n");
         ClearCommError (ctx->port, & errorFlags, & commState);
 
         bool overflow = (errorFlags & (CE_RXOVER | CE_OVERRUN)) != 0L;
 
-        if (commState.cbInQue > 0 && ReadFile (ctx->port, buffer, commState.cbInQue, & bytesRead, NULL) && bytesRead > 0) {
-            buffer [bytesRead] = '\0';
+        if (commState.cbInQue > 0) {
+            if (ctx->locker) ctx->lock ();
+            auto result = ReadFile (ctx->port, buffer, commState.cbInQue, & bytesRead, NULL);
+            if (ctx->locker) ctx->unlock ();
+            if (result && bytesRead > 0) {
+                buffer [bytesRead] = '\0';
 
-            if (*buffer) {
-                if (ctx->outputFlags & OutputFlags::COPY_TO_CONCOLE) {
-                    //ctx->incomingStrings.emplace_back (buffer);
-                    addToConsole (buffer, ctx);
+                if (*buffer) {
+                    if (ctx->outputFlags & OutputFlags::COPY_TO_CONCOLE) {
+                        addToConsole (buffer, ctx);
+                    }
+
+                    parseCtlUnitData (buffer, ctx);
                 }
-
-                parseCtlUnitData (buffer, ctx);
             }
 
-            Sleep (10);
+            Sleep (5);
         }
     } while (commState.cbInQue > 0);
 }
@@ -125,9 +132,7 @@ DWORD readerProc (void *param) {
     Ctx *ctx = (Ctx *) param;
     while (ctx->keepRunning) {
         if ((ctx->outputFlags & OutputFlags::FAKE_MODE) == 0 && ctx->port != INVALID_HANDLE_VALUE) {
-            if (ctx->locker) ctx->lock ();
             readAvailableData (ctx);
-            if (ctx->locker) ctx->unlock ();
         }
 
         Sleep (10);

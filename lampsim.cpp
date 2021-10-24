@@ -273,11 +273,6 @@ void updateWatchdog (HWND wnd) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     clock_t now = clock ();
     bool changed = false;
-if(ctx->port!=INVALID_HANDLE_VALUE){
-    int iii=0;
-    ++iii;
-    --iii;
-}
 
     if ((now - ctx->lastCorrection) > (CLOCKS_PER_SEC / 4)) {
         if (ctx->requestedBrg != ctx->actualBrg) {
@@ -355,13 +350,13 @@ if(ctx->port!=INVALID_HANDLE_VALUE){
 
     sendLampSentence (ctx->actualBrg, ctx->actualElev, ctx);
 
-    if (ctx->locker) ctx->lock ();
+    /*f (ctx->locker) ctx->lock ();
     for (auto& sentence: ctx->incomingStrings) {
         addToConsole ((char *) sentence.c_str (), ctx);
     }
 
     ctx->incomingStrings.clear ();
-    if (ctx->locker) ctx->unlock ();
+    if (ctx->locker) ctx->unlock ();*/
 }
 
 LRESULT wndProc (HWND wnd, UINT msg, WPARAM param1, LPARAM param2) {
@@ -502,6 +497,8 @@ int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int sho
 
     ShowWindow (mainWnd, SW_SHOW);
     UpdateWindow (mainWnd);
+
+    ctx.keepRunning = true;
 
     startReader (& ctx);
 
