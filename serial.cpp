@@ -43,7 +43,7 @@ void finalizeSendSentence (char *sentence, Ctx *ctx) {
 
 void sendLampSentence (double brg, double elevation, Ctx *ctx) {
     char sentence [100];
-    sprintf (sentence, "$,01,%d,%.2f,100,0*", (int) brg, elevation);
+    sprintf (sentence, "$PSMACK,01,%d,%.2f,100,0*", (int) brg, elevation /*+ 45.0*/);
     finalizeSendSentence (sentence, ctx);
 }
 
@@ -91,7 +91,7 @@ void parseCtlUnitData (char *source, Ctx *ctx) {
             printf ("Invalid lamp %d\n", lampID); return;
         }
 
-        ctx->requestedElev = atof (fields [2].c_str ());
+        ctx->requestedElev = atof (fields [2].c_str ()) /*- 45.0*/;
         ctx->requestedBrg = atof (fields [1].c_str ());
         ctx->requestedFocus = std::atoi (fields [3].c_str ());
     }
@@ -123,7 +123,7 @@ void readAvailableData (Ctx *ctx) {
                 }
             }
 
-            Sleep (5);
+            Sleep (0);
         }
     } while (commState.cbInQue > 0);
 }
@@ -135,7 +135,7 @@ DWORD readerProc (void *param) {
             readAvailableData (ctx);
         }
 
-        Sleep (10);
+        Sleep (1);
     }
     return 0;
 }

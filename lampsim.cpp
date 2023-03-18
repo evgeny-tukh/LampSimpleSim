@@ -92,6 +92,7 @@ void initWindow (HWND wnd, void *data) {
     ctx->console = createControl ("LISTBOX", "", WS_VSCROLL | WS_BORDER, true, minSize + 30, 270, client.right - minSize - 40, client.bottom - 270, IDC_CONSOLE);
     ctx->portCtlButton = createControl ("BUTTON", "Open", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 30, 5, 100, 20, IDC_TOGGLE_PORT);
     ctx->portSelector = createControl ("COMBOBOX", "Open", CBS_DROPDOWNLIST | CBS_AUTOHSCROLL, true, minSize + 160, 5, 100, 100, IDC_PORT);
+    ctx->instantModeSwitch = createControl ("BUTTON", "Instant", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 270, 5, 80, 20, IDC_TOGGLE_INSTANT_MODE);
 
     for (auto& port: ports) {
         auto item = SendMessage (ctx->portSelector, CB_ADDSTRING, 0, (LPARAM) port.c_str ());
@@ -155,6 +156,9 @@ void doCommand (HWND wnd, uint16_t command, uint16_t notification) {
         }
     } else {
         switch (command) {
+            case IDC_TOGGLE_INSTANT_MODE: {
+                ctx->instantMode = IsDlgButtonChecked (wnd, IDC_TOGGLE_INSTANT_MODE) == BST_CHECKED; break;
+            }
             case IDC_TOGGLE_PORT: {
                 if (ctx->port == INVALID_HANDLE_VALUE) {
                     if (openPort (ctx)) {
@@ -274,55 +278,66 @@ void updateWatchdog (HWND wnd) {
     clock_t now = clock ();
     bool changed = false;
 
-    if ((now - ctx->lastCorrection) > (CLOCKS_PER_SEC / 4)) {
+    if (ctx->instantMode) {
         if (ctx->requestedBrg != ctx->actualBrg) {
+            ctx->actualBrg = ctx->requestedBrg;
             changed = true;
-            auto delta1 = ctx->requestedBrg - ctx->actualBrg;
-
-            if (delta1 < 0.0) delta1 += 360.0;
-
-            auto delta2 = 360.0 - delta1;
-
-            double delta, sign;
-            
-            if (delta1 > delta2) {
-                delta = delta2;
-                sign = -1.0;
-            } else {
-                delta = delta1;
-                sign = 1.0;
-            }
-
-            if (delta > 50.0) {
-                delta = 10.0;
-            } else if (delta > 25.0) {
-                delta = 5.0;
-            } else if (delta > 5.0) {
-                delta = 1.0;
-            }
-
-            ctx->actualBrg += delta * sign;
-            if (ctx->actualBrg < 0.0) ctx->actualBrg += 360.0;
-            if (ctx->actualBrg > 360.0) ctx->actualBrg -= 360.0;
         }
         if (ctx->requestedElev != ctx->actualElev) {
+            ctx->actualElev = ctx->requestedElev;
             changed = true;
-            double requestedRng = elevation2range (ctx->mastHeight, ctx->requestedElev);
-            double actualRng = elevation2range (ctx->mastHeight, ctx->actualElev);
-            auto delta = requestedRng - actualRng;
-            auto absDelta = fabs (delta);
-            auto sign = delta >= 0 ? 1.0 : -1.0;
+        }
+    } else {
+        if ((now - ctx->lastCorrection) > (CLOCKS_PER_SEC / 4)) {
+            if (ctx->requestedBrg != ctx->actualBrg) {
+                changed = true;
+                auto delta1 = ctx->requestedBrg - ctx->actualBrg;
 
-            if (absDelta > 500.0) {
-                absDelta = 100.0;
-            } else if (absDelta > 100.0) {
-                absDelta = 10.0;
-            } else if (absDelta > 20.0) {
-                absDelta = 2.0;
+                if (delta1 < 0.0) delta1 += 360.0;
+
+                auto delta2 = 360.0 - delta1;
+
+                double delta, sign;
+                
+                if (delta1 > delta2) {
+                    delta = delta2;
+                    sign = -1.0;
+                } else {
+                    delta = delta1;
+                    sign = 1.0;
+                }
+
+                if (delta > 50.0) {
+                    delta = 10.0;
+                } else if (delta > 25.0) {
+                    delta = 5.0;
+                } else if (delta > 5.0) {
+                    delta = 1.0;
+                }
+
+                ctx->actualBrg += delta * sign;
+                if (ctx->actualBrg < 0.0) ctx->actualBrg += 360.0;
+                if (ctx->actualBrg > 360.0) ctx->actualBrg -= 360.0;
             }
+            if (ctx->requestedElev != ctx->actualElev) {
+                changed = true;
+                double requestedRng = elevation2range (ctx->mastHeight, ctx->requestedElev);
+                double actualRng = elevation2range (ctx->mastHeight, ctx->actualElev);
+                auto delta = requestedRng - actualRng;
+                auto absDelta = fabs (delta);
+                auto sign = delta >= 0 ? 1.0 : -1.0;
 
-            actualRng += absDelta * sign;
-            ctx->actualElev = range2elevation (ctx->mastHeight, actualRng);
+                if (absDelta > 500.0) {
+                    absDelta = 100.0;
+                } else if (absDelta > 100.0) {
+                    absDelta = 10.0;
+                } else if (absDelta > 20.0) {
+                    absDelta = 2.0;
+                }
+
+                actualRng += absDelta * sign;
+                ctx->actualElev = range2elevation (ctx->mastHeight, actualRng);
+            }
         }
     }
 

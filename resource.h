@@ -14,6 +14,7 @@
 #define IDC_CONSOLE                     107
 #define IDC_TOGGLE_PORT                 108
 #define IDC_PORT                        109
+#define IDC_TOGGLE_INSTANT_MODE         110
 
 #define ID_EXIT                         200
 #define ID_EDITING_TEXT                 209

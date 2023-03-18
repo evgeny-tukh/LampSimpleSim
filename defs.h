@@ -24,7 +24,7 @@ struct Ctx {
     uint8_t ctlProtectMask;
     HINSTANCE instance;
     HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
-    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl, console, portCtlButton, portSelector;
+    HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl, console, portCtlButton, portSelector, instantModeSwitch;
     RECT client;
     uint8_t outputFlags;
     HANDLE port;
@@ -40,6 +40,7 @@ struct Ctx {
     double requestedBrg;
     double requestedElev;
     double mastHeight;
+    bool instantMode;
     clock_t lastCorrection;
     HANDLE locker, reader;
     std::vector<std::string> incomingStrings;
@@ -74,6 +75,9 @@ struct Ctx {
     actualFocus (_actualFocus),
     portCtlButton (0),
     portSelector (0),
+    instantModeSwitch (0),
+    instantMode (false),
+
     outputFlags (OutputFlags::COPY_TO_CONCOLE /*| OutputFlags::FAKE_MODE*/) {
         borderPen = CreatePen (PS_SOLID, 3, 0);
         displayBrush = CreateSolidBrush (RGB (100, 100, 100));
