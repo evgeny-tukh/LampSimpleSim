@@ -41,9 +41,9 @@ void finalizeSendSentence (char *sentence, Ctx *ctx) {
     }
 }
 
-void sendLampSentence (double brg, double elevation, Ctx *ctx) {
+void sendLampSentence (double brg, double elevation, uint32_t status, Ctx *ctx) {
     char sentence [100];
-    sprintf (sentence, "$PSMACK,01,%d,%.2f,100,0*", (int) brg, elevation /*+ 45.0*/);
+    sprintf (sentence, "$PSMACK,01,%d,%.2f,100,%02X*", (int) brg, elevation /*+ 45.0*/, status);
     finalizeSendSentence (sentence, ctx);
 }
 

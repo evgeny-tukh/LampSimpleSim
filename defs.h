@@ -20,11 +20,24 @@ enum CtlProtectFlags {
     ACT_RNG = 32,
 };
 
+enum LampStatus
+{
+    LampOK         = 0,
+    AzimuthFault   = 1,
+    ElevationFault = 2,
+    FocusFault     = 4,
+    TempSensorFail = 8,
+    Daylight       = 16,
+    PowerLoss      = 32,
+    NoLampFound    = 0x80
+};
+
 struct Ctx {
     uint8_t ctlProtectMask;
     HINSTANCE instance;
     HWND display, reqBrgValue, reqElevValue, actBrgValue, actElevValue, reqBrgValueLbl, reqElevValueLbl, actBrgValueLbl, actElevValueLbl;
     HWND actRngValue, actRngValueLbl, reqRngValue, reqRngValueLbl, console, portCtlButton, portSelector, instantModeSwitch;
+    HWND lampOk, azimuthFault, elevationFault, focusFault, tempSensorFail, daylight, powerLoss;
     RECT client;
     uint8_t outputFlags;
     HANDLE port;
@@ -115,7 +128,7 @@ struct Ctx {
     }
 };
 
-void sendLampSentence (double brg, double elevation, Ctx *ctx);
+void sendLampSentence (double brg, double elevation, uint32_t status, Ctx *ctx);
 void getSerialPortsList (std::vector<std::string>& ports);
 bool openPort (Ctx *ctx);
 void startReader (Ctx *ctx);

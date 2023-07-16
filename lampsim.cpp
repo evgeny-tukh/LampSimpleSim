@@ -93,6 +93,13 @@ void initWindow (HWND wnd, void *data) {
     ctx->portCtlButton = createControl ("BUTTON", "Open", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 30, 5, 100, 20, IDC_TOGGLE_PORT);
     ctx->portSelector = createControl ("COMBOBOX", "Open", CBS_DROPDOWNLIST | CBS_AUTOHSCROLL, true, minSize + 160, 5, 100, 100, IDC_PORT);
     ctx->instantModeSwitch = createControl ("BUTTON", "Instant", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 270, 5, 80, 20, IDC_TOGGLE_INSTANT_MODE);
+    ctx->lampOk = createControl ("BUTTON", "Lamp Ok", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 40, 120, 20, IDC_TOGGLE_LAMP_OK);
+    ctx->azimuthFault = createControl ("BUTTON", "Azimuth fault", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 70, 120, 20, IDC_TOGGLE_AZIMUTH_FAULT);
+    ctx->elevationFault = createControl ("BUTTON", "Elev fault", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 100, 120, 20, IDC_TOGGLE_ELEVATION_FAULT);
+    ctx->focusFault = createControl ("BUTTON", "Focus fault", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 130, 120, 20, IDC_TOGGLE_FOCUS_FAULT);
+    ctx->tempSensorFail = createControl ("BUTTON", "Temp send fault", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 160, 120, 20, IDC_TOGGLE_TEMP_SENSOR_FAULT);
+    ctx->daylight = createControl ("BUTTON", "Daylight", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 190, 120, 20, IDC_TOGGLE_DAYLIGHT);
+    ctx->powerLoss = createControl ("BUTTON", "Power loss", BS_AUTOCHECKBOX | BS_PUSHLIKE, true, minSize + 230, 220, 120, 20, IDC_TOGGLE_POWER_LOSS);
 
     for (auto& port: ports) {
         auto item = SendMessage (ctx->portSelector, CB_ADDSTRING, 0, (LPARAM) port.c_str ());
@@ -103,6 +110,7 @@ void initWindow (HWND wnd, void *data) {
         SendMessage (ctx->portSelector, CB_SETCURSEL, 0, 0);
     }
 
+    SendMessage(ctx->lampOk, BM_SETCHECK, BST_CHECKED, 0);
     SetTimer (wnd, 200, 250, 0);
 }
 
@@ -156,6 +164,20 @@ void doCommand (HWND wnd, uint16_t command, uint16_t notification) {
         }
     } else {
         switch (command) {
+            case IDC_TOGGLE_LAMP_OK:
+                SendMessage(ctx->azimuthFault, BM_SETCHECK, BST_UNCHECKED, 0);
+                SendMessage(ctx->elevationFault, BM_SETCHECK, BST_UNCHECKED, 0);
+                SendMessage(ctx->focusFault, BM_SETCHECK, BST_UNCHECKED, 0);
+                SendMessage(ctx->tempSensorFail, BM_SETCHECK, BST_UNCHECKED, 0);
+                SendMessage(ctx->powerLoss, BM_SETCHECK, BST_UNCHECKED, 0);
+                break;
+            case IDC_TOGGLE_AZIMUTH_FAULT:
+            case IDC_TOGGLE_ELEVATION_FAULT:
+            case IDC_TOGGLE_FOCUS_FAULT:
+            case IDC_TOGGLE_TEMP_SENSOR_FAULT:
+            case IDC_TOGGLE_DAYLIGHT:
+            case IDC_TOGGLE_POWER_LOSS:
+                SendMessage(ctx->lampOk, BM_SETCHECK, BST_UNCHECKED, 0); break;
             case IDC_TOGGLE_INSTANT_MODE: {
                 ctx->instantMode = IsDlgButtonChecked (wnd, IDC_TOGGLE_INSTANT_MODE) == BST_CHECKED; break;
             }
@@ -255,22 +277,32 @@ void paintDisplay (HWND wnd) {
 void onSize (HWND wnd, int width, int height) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     auto minSize = (width < height ? width : height) - 20;
+    auto x1 = minSize + 30;
+    auto x2 = minSize + 170;
+    auto x3 = minSize + 230;
     MoveWindow (ctx->display, 10, 10, minSize, minSize, true);
-    MoveWindow (ctx->reqBrgValueLbl, minSize + 30, 45, 150, 20, true);
-    MoveWindow (ctx->reqElevValueLbl, minSize + 30, 85, 150, 20, true);
-    MoveWindow (ctx->actBrgValueLbl, minSize + 30, 125, 150, 20, true);
-    MoveWindow (ctx->actElevValueLbl, minSize + 30, 155, 150, 20, true);
-    MoveWindow (ctx->reqBrgValue, minSize + 200, 40, 50, 20, true);
-    MoveWindow (ctx->reqElevValue, minSize + 200, 80, 50, 20, true);
-    MoveWindow (ctx->actBrgValue, minSize + 200, 120, 50, 20, true);
-    MoveWindow (ctx->actElevValue, minSize + 200, 150, 50, 20, true);
-    MoveWindow (ctx->actRngValue, minSize + 200, 200, 50, 20, true);
-    MoveWindow (ctx->actRngValueLbl, minSize + 30, 205, 150, 20, true);
-    MoveWindow (ctx->reqRngValue, minSize + 200, 230, 50, 20, true);
-    MoveWindow (ctx->reqRngValueLbl, minSize + 30, 245, 150, 20, true);
-    MoveWindow (ctx->portCtlButton, minSize + 30, 5, 100, 20, true);
+    MoveWindow (ctx->reqBrgValueLbl, x1, 40, 150, 20, true);
+    MoveWindow (ctx->reqElevValueLbl, x1, 80, 150, 20, true);
+    MoveWindow (ctx->actBrgValueLbl, x1, 120, 150, 20, true);
+    MoveWindow (ctx->actElevValueLbl, x1, 160, 150, 20, true);
+    MoveWindow (ctx->reqBrgValue, x2, 40, 50, 20, true);
+    MoveWindow (ctx->reqElevValue, x2, 80, 50, 20, true);
+    MoveWindow (ctx->actBrgValue, x2, 120, 50, 20, true);
+    MoveWindow (ctx->actElevValue, x2, 160, 50, 20, true);
+    MoveWindow (ctx->actRngValue, x2, 200, 50, 20, true);
+    MoveWindow (ctx->actRngValueLbl, x1, 200, 150, 20, true);
+    MoveWindow (ctx->reqRngValue, x2, 240, 50, 20, true);
+    MoveWindow (ctx->reqRngValueLbl, x1, 240, 150, 20, true);
+    MoveWindow (ctx->portCtlButton, x1, 5, 100, 20, true);
     MoveWindow (ctx->portSelector, minSize + 160, 5, 100, 20, true);
-    MoveWindow (ctx->console, minSize + 30, 270, width - minSize - 40, height - 270, true);
+    MoveWindow (ctx->console, x1, 270, width - minSize - 40, height - 270, true);
+    MoveWindow (ctx->lampOk, x3, 40, 120, 20, true);
+    MoveWindow (ctx->azimuthFault, x3, 70, 120, 20, true);
+    MoveWindow (ctx->elevationFault, x3, 100, 120, 20, true);
+    MoveWindow (ctx->focusFault, x3, 130, 120, 20, true);
+    MoveWindow (ctx->tempSensorFail, x3, 160, 120, 20, true);
+    MoveWindow (ctx->daylight, x3, 190, 120, 20, true);
+    MoveWindow (ctx->powerLoss, x3, 220, 120, 20, true);
 }
 
 void updateWatchdog (HWND wnd) {
@@ -356,6 +388,14 @@ void updateWatchdog (HWND wnd) {
         }
     };
 
+    uint32_t status = LampStatus::LampOK;
+    if (SendMessage(ctx->azimuthFault, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::AzimuthFault;
+    if (SendMessage(ctx->elevationFault, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::ElevationFault;
+    if (SendMessage(ctx->focusFault, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::FocusFault;
+    if (SendMessage(ctx->tempSensorFail, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::TempSensorFail;
+    if (SendMessage(ctx->daylight, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::Daylight;
+    if (SendMessage(ctx->powerLoss, BM_GETCHECK, 0, 0) == BST_CHECKED) status |= LampStatus::PowerLoss;
+
     setWindowTextIfChanged (ctx->reqBrgValue, ftoa (ctx->requestedBrg), CtlProtectFlags::REQ_BRG);
     setWindowTextIfChanged (ctx->reqElevValue, ftoa (ctx->requestedElev, "%.3f"), CtlProtectFlags::REQ_ELEV);
     setWindowTextIfChanged (ctx->actBrgValue, ftoa (ctx->actualBrg), CtlProtectFlags::ACT_BRG);
@@ -363,7 +403,7 @@ void updateWatchdog (HWND wnd) {
     setWindowTextIfChanged (ctx->reqRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->requestedElev), "%.1f"), CtlProtectFlags::REQ_RNG);
     setWindowTextIfChanged (ctx->actRngValue, ftoa (elevation2range (ctx->mastHeight, ctx->actualElev), "%.1f"), CtlProtectFlags::ACT_RNG);
 
-    sendLampSentence (ctx->actualBrg, ctx->actualElev, ctx);
+    sendLampSentence (ctx->actualBrg, ctx->actualElev, status, ctx);
 
     /*f (ctx->locker) ctx->lock ();
     for (auto& sentence: ctx->incomingStrings) {

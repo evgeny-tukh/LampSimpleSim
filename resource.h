@@ -15,6 +15,13 @@
 #define IDC_TOGGLE_PORT                 108
 #define IDC_PORT                        109
 #define IDC_TOGGLE_INSTANT_MODE         110
+#define IDC_TOGGLE_LAMP_OK              111
+#define IDC_TOGGLE_AZIMUTH_FAULT        112
+#define IDC_TOGGLE_ELEVATION_FAULT      113
+#define IDC_TOGGLE_FOCUS_FAULT          114
+#define IDC_TOGGLE_TEMP_SENSOR_FAULT    115
+#define IDC_TOGGLE_DAYLIGHT             116
+#define IDC_TOGGLE_POWER_LOSS           117
 
 #define ID_EXIT                         200
 #define ID_EDITING_TEXT                 209
